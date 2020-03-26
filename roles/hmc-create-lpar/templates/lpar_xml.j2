@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<LogicalPartition:LogicalPartition xmlns:LogicalPartition="http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/" xmlns="http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/" xmlns:ns2="http://www.w3.org/XML/1998/namespace/k2" schemaVersion="V1_8_0">
+  <PartitionMemoryConfiguration kb="CUD" kxe="false" schemaVersion="V1_8_0">
+    <Metadata>
+      <Atom/>
+    </Metadata>
+    <DesiredMemory kb="CUD" kxe="false">{{ lpar_info.des_mem }}</DesiredMemory>
+    <MaximumMemory kb="CUD" kxe="false">{{ lpar_info.max_mem }}</MaximumMemory>
+    <MinimumMemory kb="CUD" kxe="false">{{ lpar_info.min_mem }}</MinimumMemory>
+  </PartitionMemoryConfiguration>
+  <PartitionName kxe="false" kb="CUR">{{ lpar_info.name }}</PartitionName>
+  <PartitionProcessorConfiguration kb="CUD" kxe="false" schemaVersion="V1_8_0">
+    <Metadata>
+      <Atom/>
+    </Metadata>
+    <HasDedicatedProcessors kb="CUD" kxe="false">false</HasDedicatedProcessors>
+    <SharedProcessorConfiguration kb="CUD" kxe="false" schemaVersion="V1_8_0">
+      <Metadata>
+        <Atom/>
+      </Metadata>
+      <DesiredProcessingUnits kb="CUD" kxe="false">{{ lpar_info.des_ec }}</DesiredProcessingUnits>
+      <DesiredVirtualProcessors kb="CUD" kxe="false">{{ lpar_info.des_vp }}</DesiredVirtualProcessors>
+      <MaximumProcessingUnits kb="CUD" kxe="false">{{ lpar_info.max_ec }}</MaximumProcessingUnits>
+      <MaximumVirtualProcessors kb="CUD" kxe="false">{{ lpar_info.max_vp }}</MaximumVirtualProcessors>
+      <MinimumProcessingUnits kb="CUD" kxe="false">{{ lpar_info.min_ec }}</MinimumProcessingUnits>
+      <MinimumVirtualProcessors kb="CUD" kxe="false">{{ lpar_info.min_vp }}</MinimumVirtualProcessors>
+      <SharedProcessorPoolID kb="CUD" kxe="false">0</SharedProcessorPoolID>
+      <UncappedWeight kb="CUD" kxe="false">128</UncappedWeight>
+    </SharedProcessorConfiguration>
+    <SharingMode kb="CUD" kxe="false">uncapped</SharingMode>
+  </PartitionProcessorConfiguration>
+  <PartitionType kxe="false" kb="COD">AIX/Linux</PartitionType>
+</LogicalPartition:LogicalPartition>
+

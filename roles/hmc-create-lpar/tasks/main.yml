@@ -1,0 +1,262 @@
+# Playbook for create LPAR with HMC Rest API
+# TPeponas
+
+- name: Authenticate HMC REST API 
+  uri:
+    headers: 
+      Content-Type: "application/vnd.ibm.powervm.web+xml; type: LogonRequest"
+      Accept: "application/vnd.ibm.powervm.web+xml; type=LogonResponse"
+      X-Audit-Memento: "Ansible-automation: Logon request"
+    validate_certs: no
+    method: PUT
+    url: "{{ hmc_url }}/web/Logon"
+    body_format: raw
+    body: "{{ lookup('template', 'templates/login.j2', convert_data=False) }}"
+  register: login
+
+- name: Get Server Object XML
+  uri:
+    headers:
+      Accept: "application/atom+xml; charset=UTF-8"
+      Cookie: "{{ login.set_cookie }}"
+    validate_certs: no
+    return_content: yes
+    method: GET
+    url:  "{{ hmc_url }}/uom/ManagedSystem/search/(SystemName=={{ managed_system_name }})"
+    dest: "{{ role_path }}/tmp/MS.xml"
+  register: Server
+
+- name: Get UID Server
+  xml:
+    path: "{{ role_path }}/tmp/MS.xml"
+    xpath: .//ns2:ManagedSystem/ns2:Metadata/ns2:Atom/ns2:AtomID
+    content: text
+    namespaces:
+      ns1: http://www.w3.org/2005/Atom
+      ns2: http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/
+  register: server_uid
+
+- name: Creation link server
+  set_fact:
+    server_link: "{{ hmc_url+'/uom/ManagedSystem/'+server_uid.matches[0][ns2+'AtomID'] }}"
+
+- name: Creation LPAR Object
+  uri:
+    headers:
+      Accept: "application/atom+xml; charset=UTF-8"
+      Content-type: "application/vnd.ibm.powervm.uom+xml; type=LogicalPartition"
+      Cookie: "{{ login.set_cookie }}"
+    validate_certs: no
+    return_content: yes
+    method: PUT
+    url: "{{ server_link+'/LogicalPartition' }}"
+    body_format: raw
+    body: "{{ lookup('template', 'templates/lpar_xml.j2') }}"
+    dest: "{{ role_path }}/tmp/lpar.xml"
+  register: lpar_object
+
+- name: Find partition ID
+  xml:
+    path: "{{ role_path }}/tmp/lpar.xml"
+    xpath:  './/ns2:LogicalPartition/ns2:PartitionID'
+    content: text
+    namespaces:
+      ns1: http://www.w3.org/2005/Atom
+      ns2: http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/
+  register: lpar_id
+
+- name: Populate Partition ID
+  set_fact:
+    lpar_info: "{{ lpar_info | combine({ 'id': lpar_id.matches[0][ns2+'PartitionID'] }) }}"
+
+- name: Get LPAR UID
+  xml:
+    xmlstring: "{{ lpar_object.content }}"
+    xpath: .//ns2:LogicalPartition/ns2:Metadata/ns2:Atom/ns2:AtomID
+    content: text
+    namespaces:
+      ns1: http://www.w3.org/2005/Atom
+      ns2: http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/
+  register: lpar_uid
+
+- name: Create LPAR Link
+  set_fact:
+    lpar_link: "{{ server_link+'/LogicalPartition/'+lpar_uid.matches[0][ns2+'AtomID'] }}"
+
+- name: Add Client Network Adapter
+  uri:
+    headers:
+      Accept: "application/atom+xml; charset=UTF-8"
+      Content-type: "application/vnd.ibm.powervm.uom+xml; type=ClientNetworkAdapter"
+      Cookie: "{{ login.set_cookie }}"
+    validate_certs: no
+    return_content: yes
+    method: PUT
+    url: "{{ hmc_url+'/uom/LogicalPartition/'+lpar_uid.matches[0][ns2+'AtomID']+'/ClientNetworkAdapter' }}"
+    body_format: raw
+    body: "{{ lookup('template', 'templates/network_adapter_xml.j2') }}"
+  register: cna_object
+
+# Vios Mapping
+
+- name: Search Vio1
+  uri:
+    headers:
+      Accept: "application/atom+xml; charset=UTF-8"
+      Cookie: "{{ login.set_cookie }}"
+    validate_certs: no
+    return_content: yes
+    method: GET
+    url: "{{ hmc_url }}/uom/VirtualIOServer/search/(PartitionName=={{ vio1_info.name }})"
+    dest: "{{ role_path }}/tmp/vio1.xml"
+  register: vio1
+
+- name: Search Vio2
+  uri:
+    headers:
+      Accept: "application/atom+xml; charset=UTF-8"
+      Cookie: "{{ login.set_cookie }}"
+    validate_certs: no
+    return_content: yes
+    method: GET
+    url: "{{ hmc_url }}/uom/VirtualIOServer/search/(PartitionName=={{ vio2_info.name }})"
+    dest: "{{ role_path }}/tmp/vio2.xml"
+  register: vio2
+
+# Creation du Mapping VIO pour les FC
+  
+- name: Add vfc map xml Vio1
+  xml:
+    path: "{{ role_path }}/tmp/vio1.xml"
+    input_type: xml
+    add_children:  "{{ lookup('template', 'templates/vfc_vio1_xml.j2') }}"
+    xpath: /ns1:feed/ns1:entry/ns1:content/ns2:VirtualIOServer/ns2:VirtualFibreChannelMappings
+    namespaces:
+      ns1: http://www.w3.org/2005/Atom
+      ns2: http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/
+
+- name: Add vfc map xml Vio2
+  xml:
+    path: "{{ role_path }}/tmp/vio2.xml"
+    input_type: xml
+    add_children:  "{{ lookup('template', 'templates/vfc_vio2_xml.j2') }}"
+    xpath: /ns1:feed/ns1:entry/ns1:content/ns2:VirtualIOServer/ns2:VirtualFibreChannelMappings
+    namespaces:
+      ns1: http://www.w3.org/2005/Atom
+      ns2: http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/
+
+- name: Get UID Vio1
+  xml:
+    path: "{{ role_path }}/tmp/vio1.xml"
+    xpath: .//ns2:VirtualIOServer/ns2:Metadata/ns2:Atom/ns2:AtomID
+    content: text
+    namespaces:
+      ns1: http://www.w3.org/2005/Atom
+      ns2: http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/
+  register: vio1_uid
+
+- name: Create vio1 link
+  set_fact:
+     vio1_link: "{{ hmc_url+'/uom/VirtualIOServer/'+vio1_uid.matches[0][ns2+'AtomID'] }}"
+
+- name: Get UID Vio2
+  xml:
+    path: "{{ role_path }}/tmp/vio2.xml"
+    xpath: .//ns2:VirtualIOServer/ns2:Metadata/ns2:Atom/ns2:AtomID
+    content: text
+    namespaces:
+      ns1: http://www.w3.org/2005/Atom
+      ns2: http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/
+  register: vio1_uid
+
+- name: Create vio2 link
+  set_fact:
+     vio2_link: "{{ hmc_url+'/uom/VirtualIOServer/'+vio1_uid.matches[0][ns2+'AtomID'] }}"
+
+# Weed need to get only subelemtnVirtualIOServer from XML , not feed/entry/content . If not update with REST Api failed
+# We use filter python xml_sub_elem
+
+- name: Change vio1 xml
+  set_fact:
+     vio1_xml: "{{ lookup('file', role_path+'/tmp/vio1.xml') | xml_sub_elem('.//ns1:VirtualIOServer',{ 'ns1':'http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/'}) }} "
+
+- name: Change vio2 xml
+  set_fact:
+     vio2_xml: "{{ lookup('file',  role_path+'/tmp/vio2.xml') | xml_sub_elem('.//ns1:VirtualIOServer',{ 'ns1':'http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/'}) }} "
+
+- name: Update VIO1
+  uri:
+    headers:
+      Accept: "application/atom+xml; charset=UTF-8"
+      Content-type: "application/vnd.ibm.powervm.uom+xml; type=VirtualIOServer"
+      Cookie: "{{ login.set_cookie }}"
+    validate_certs: no
+    return_content: yes
+    method: POST
+    url: "{{ vio1_link }}"
+    body_format: raw
+    body: "{{  vio1_xml }}"
+    dest: "{{ role_path }}/tmp/vio1.xml"
+  register: lpar_fcs0
+
+- name: Update VIO2
+  uri:
+    headers:
+      Accept: "application/atom+xml; charset=UTF-8"
+      Content-type: "application/vnd.ibm.powervm.uom+xml; type=VirtualIOServer"
+      Cookie: "{{ login.set_cookie }}"
+    validate_certs: no
+    return_content: yes
+    method: POST
+    url: "{{ vio2_link }}"
+    body_format: raw
+    body: "{{  vio2_xml }}"
+    dest: "{{ role_path }}/tmp/vio2.xml"
+  register: lpar_fcs1
+
+- name: Get lpar wwpn associted to vio1
+  xml:
+    path: "{{ role_path }}/tmp/vio1.xml"
+    xpath: './/ns2:VirtualFibreChannelMappings/ns2:VirtualFibreChannelMapping/ns2:ClientAdapter[ns2:LocalPartitionID="{{ lpar_info.id }}"]/ns2:WWPNs'
+    content: text
+    namespaces:
+      ns1: http://www.w3.org/2005/Atom
+      ns2: http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/
+  register: lpar_vio1_wwpn
+
+- name: Get lpar wwpn associted to vio1
+  xml:
+    path: "{{ role_path }}/tmp/vio2.xml"
+    xpath: './/ns2:VirtualFibreChannelMappings/ns2:VirtualFibreChannelMapping/ns2:ClientAdapter[ns2:LocalPartitionID="{{ lpar_info.id }}"]/ns2:WWPNs'
+    content: text
+    namespaces:
+      ns1: http://www.w3.org/2005/Atom
+      ns2: http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/
+  register: lpar_vio2_wwpn
+
+- name: populate vio1 lpar wwpn info
+  set_fact:
+    lpar_info: "{{ lpar_info | combine({ 'fcs_vio1_wwpn': lpar_vio1_wwpn.matches[0][ns2+'WWPNs']}  ) }}"
+
+- name: populate vio2 lpar wwpn info
+  set_fact:
+    lpar_info: "{{ lpar_info | combine({ 'fcs_vio2_wwpn': lpar_vio2_wwpn.matches[0][ns2+'WWPNs']}  ) }}"
+
+- name: Dump lpar info
+  debug:
+    msg: "{{lpar_info }}"
+
+- name: Logout 
+  uri:
+    headers:
+      Accept: "application/atom+xml; charset=UTF-8"
+      Cookie: "{{ login.set_cookie }}"
+    validate_certs: no
+    return_content: yes
+    method: DELETE
+    url: "{{ hmc_url }}/web/Logon"
+    status_code: 200, 204
+  register: logout
+  ignore_errors: yes
+
+

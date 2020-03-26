@@ -1,0 +1,24 @@
+---
+# Playbook for create LPAR using HMC Rest API
+
+- hosts: localhost
+  gather_facts: no
+  vars:
+    hmc_user: hscroot
+    hmc_password: mysecret
+    hmc: hmcserver
+    hmc_url: "{{ 'https://'+hmc+':12443/rest/api' }}"
+    managed_system_name: "powerserver"
+    ns1: "{http://www.w3.org/2005/Atom}"
+    ns2: "{http://www.ibm.com/xmlns/systems/power/firmware/uom/mc/2012_10/}"
+    vio1_info: { name: powerserver-vio1, fcs: fcs0 }
+    vio2_info: { name: powerserver-vio2, fcs: fcs1 }
+    lpar_info: { name: MyLpar,
+                 min_ec: 0.1, max_ec: 2.0, des_ec: 0.5,
+                 min_vp: 1, max_vp: 4, des_vp: 2,
+                 min_mem: 1024, max_mem: 4096, des_mem: 2048,
+                 vlan: 1 }
+
+  roles:
+    - role: hmc-create-lpar
+
